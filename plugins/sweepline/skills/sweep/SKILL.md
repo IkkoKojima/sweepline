@@ -76,6 +76,9 @@ sweep <ISO 時刻> (session: <URL or id>) kit=$KIT_SHA
 - 対象: #12 #15 / 回収: #9 / 修正依頼の受付: #7 (依頼 2 件) / 指定: (payload があれば)
 - 結果: #9 merged (PR #30, 計画 1 往復, エスカレーション 0), #7 修正 1 merged (PR #31, 依頼 2 件), #12 blocked (理由), #15 未着手 (時間切れ)
 - main: ok (<verify の要約>) / 所要: 1h48m / Fable 代替: なし / 未解決の指摘: PR #30 M2
+- kit: 0.4.1 (最新 0.4.2 あり → ローカルで `/sweepline:setup --update`)
 ```
 
+kit の行は `bash $KIT/scripts/kit_update_check.sh` (`CURRENT= LATEST= UPDATE=yes|no|unknown`) から書く。`UPDATE=no` なら「kit: 0.4.2 (最新)」、
+`unknown` なら「kit: 0.4.1 (最新は確認できず)」。更新はオーナーがローカルで行う (クラウドからは環境を書き換えられない) ので、案内するだけで止まらない。
 `$GH comment "$STATUS" -` で投稿する。最後に `git checkout -q "$START_BRANCH"` で元のブランチに戻す (detach のままにしない)。

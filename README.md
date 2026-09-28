@@ -44,7 +44,7 @@ claude                 # 対象 repo で
 |---|---|---|
 | `/sweepline:setup` | ローカル | 導入・更新ウィザード (`--update` kit 更新 / `--deploy` 配信設定 / `--check` 確認のみ) |
 | `/sweepline:req` | どこでも | 一言 → テンプレ準拠 issue |
-| `/sweepline:run [N...]` | ローカル | sweep routine を今すぐ 1 回起動 |
+| `/sweepline:run [N...]` | ローカル | sweep routine を今すぐ 1 回起動 (クラウドで呼ばれたら、そのセッションで impl / fix / sweep を実行) |
 | `/sweepline:sweep` | クラウド (routine) | 無人運転の入口 |
 | `/sweepline:impl N` | クラウド | 1 issue を計画 → レビュー → 実装 → 検証 → PR → マージ (修正依頼のある issue は修正ラウンド) |
 | `/sweepline:fix N <直してほしいこと>` | どこでも | マージ済みの issue に修正依頼を出す (クラウドの impl 環境ならそのまま修正の PR まで) |
@@ -68,6 +68,16 @@ claude                 # 対象 repo で
 - 修正の PR は本文に `Rework-Request: <依頼コメントの URL>` 行を持つ (マージ前に `verify_checklist.py check --rework` が検証)。この行が処理済みの記録で、
   `gh.sh fix-requests N` が「何回目の修正か」と「未処理の依頼」を引く
 - `/sweepline:release` の実機確認で NG のときも、新しい issue ではなく元 issue への修正依頼になる。チェックリストは最後の修正の PR の観点を展開する
+
+## 版の更新 (kit の固定と、dashboard との版差)
+
+各 repo のプラグインは `sweepline.toml` の `kit` (commit sha) とクラウド環境の init_script で固定されている (無人の routine の下で勝手に変わらないよう、
+上げるタイミングは owner が決める)。更新は **owner がローカルの Claude Code でその repo を開き** `/sweepline:setup --update` (環境の init_script と
+`kit` を最新にして commit → main へ)。クラウドセッションには利用者の claude.ai OAuth が置かれないため、クラウドからは環境を書き換えられない。
+
+- sweep の要約と、クラウドセッション開始時の 1 行に、新しい版の有無が出る (`scripts/kit_update_check.sh`。配布元 main の `plugin.json` と比べる)
+- sweepline dashboard は `kit` から版を引き、版に依る機能 (修正依頼 = 0.4.0 以上) を満たさない repo では出さず、更新の案内を出す
+- 約束事: dashboard が新しい約束事 (ラベル・コメントの書式) に依存する機能を足すときは最低版を宣言し、プラグインは後方互換を保つ
 
 ## sweepline.toml
 
@@ -169,7 +179,7 @@ plugins/sweepline/
   agents/{implementer,plan-reviewer}.md
   hooks/hooks.json                 SessionStart (クラウド限定)
   scripts/  sweepline_config.py  env_api.py  gh.sh  routine_body.py  verify.sh  codex_review.sh
-            verify_checklist.py  fix_requests.py  pr_checks.sh  release_notes.sh  session_start.sh  providers/*.sh
+            verify_checklist.py  fix_requests.py  kit_update_check.sh  pr_checks.sh  release_notes.sh  session_start.sh  providers/*.sh
   stacks/   <name>_session.sh      セッション開始時のスタック固有処理 (キャッシュ復元・依存解決)
   setup/    bootstrap.sh <stack>.sh finish.sh   環境 setup script の部品 (env_api.py render が結合)
   templates/ routine-prompt.md pr-body.md issue-body.md CLAUDE-sweepline-section.md status-issue-body.md
