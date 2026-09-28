@@ -54,6 +54,18 @@ def _credentials() -> dict:
     raise SystemExit("env_api: Claude Code の認証情報が見つからない (claude でログインしてから実行)")
 
 
+def _config_org() -> str:
+    """~/.claude.json の oauthAccount.organizationUuid (新しい Claude Code は credentials ではなくこちらに持つ)。無ければ空文字。"""
+    p = Path.home() / ".claude.json"
+    if not p.exists():
+        return ""
+    try:
+        acct = json.loads(p.read_text(encoding="utf-8")).get("oauthAccount") or {}
+    except (json.JSONDecodeError, OSError):
+        return ""
+    return acct.get("organizationUuid") or ""
+
+
 def _auth() -> tuple[str, str]:
     c = _credentials()
     o = c.get("claudeAiOauth") or {}
@@ -63,9 +75,9 @@ def _auth() -> tuple[str, str]:
     exp = o.get("expiresAt") or 0
     if exp and exp / 1000 < time.time():
         raise SystemExit("env_api: OAuth トークンが期限切れ。`claude` を一度起動して更新してから再実行")
-    org = c.get("organizationUuid") or ""
+    org = c.get("organizationUuid") or _config_org()
     if not org:
-        raise SystemExit("env_api: organizationUuid が無い (claude を一度起動して credentials を更新)")
+        raise SystemExit("env_api: organizationUuid が無い (~/.claude/.credentials.json にも ~/.claude.json の oauthAccount にも無い。claude を一度起動して更新)")
     return tok, org
 
 
@@ -220,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "whoami":
         c = _credentials(); o = c.get("claudeAiOauth") or {}
-        print(json.dumps({"organizationUuid": c.get("organizationUuid"), "subscriptionType": o.get("subscriptionType"), "expiresAt": o.get("expiresAt")}))
+        print(json.dumps({"organizationUuid": c.get("organizationUuid") or _config_org() or None, "subscriptionType": o.get("subscriptionType"), "expiresAt": o.get("expiresAt")}))
         return 0
     if a.cmd == "list":
         envs = list_envs()
