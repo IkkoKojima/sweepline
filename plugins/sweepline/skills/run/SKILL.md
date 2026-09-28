@@ -1,9 +1,14 @@
 ---
 name: run
-description: この repo の sweep routine を今すぐ 1 回起動する (ローカルから、RemoteTrigger の run。API トークン不要)。引数に issue 番号を並べると、その issue だけを対象にする。例: /sweepline:run 46 47
+description: この repo の sweep routine を今すぐ 1 回起動する (ローカルから、RemoteTrigger の run。API トークン不要)。引数に issue 番号を並べると、その issue だけを対象にする。クラウドセッションで呼ばれたら routine は起動せず、そのセッションで impl / fix / sweep を実行する。例: /sweepline:run 46 47
 ---
 
 # /sweepline:run [N ...]
+
+**クラウドセッション (`CLAUDE_CODE_REMOTE=true`) で呼ばれたとき**は routine を起動できない (routine の起動にはオーナーのローカルの OAuth が要り、
+エージェントが作った trigger は fire できない)。代わりに、その issue をこのセッションで処理する:
+`$GH issue-get N` で `merged_unverified` が付いていれば `/sweepline:fix N` (修正依頼を拾う)、そうでなければ `/sweepline:impl N`。
+番号が無ければ `/sweepline:sweep`。RemoteTrigger や `routine_api.py` の代替を探さない。
 
 ```bash
 KIT="${CLAUDE_PLUGIN_ROOT:-}"; [ -d "$KIT/scripts" ] || KIT=/opt/sweepline/kit/plugins/sweepline

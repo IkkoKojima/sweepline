@@ -31,6 +31,11 @@ export SWEEPLINE_REPO="${SWEEPLINE_REPO:-$REPO_SLUG}"
 
 KIT_SHORT="${KIT_SHA:0:12}"
 echo "[sweepline] env=${SWEEPLINE_ENV:-unset} kit=${KIT_SHORT:-none} repo=${SWEEPLINE_REPO:-?} branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+# 新しい版の有無 (飾り。配布元に 5 秒で届かなければ黙る)。更新はオーナーがローカルで /sweepline:setup --update
+UPD="$(bash "$KIT/scripts/kit_update_check.sh" 2>/dev/null)"
+case "$UPD" in
+  *UPDATE=yes*) echo "[sweepline] update available: $(sed -E 's/^CURRENT=(\S+) LATEST=(\S+).*/\1 → \2/' <<< "$UPD") (owner がローカルで /sweepline:setup --update)" ;;
+esac
 
 if [ ! -f sweepline.toml ]; then
   echo "[sweepline] WARN: sweepline.toml が無い → stack の準備を skip (ローカルで /sweepline:setup を実行して commit する)"
