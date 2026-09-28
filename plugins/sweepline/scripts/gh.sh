@@ -17,12 +17,17 @@
 #   gh.sh label-add N <label>            ADDED=<label>
 #   gh.sh label-del N <label>            REMOVED=<label> / ABSENT=<label> (404 は無視)
 #   gh.sh comment N <file|->             COMMENT_ID=<id> / URL=<url>
-#   gh.sh issues-ready                   ready 付きで in_progress / blocked / merged_unverified / skipped の無い open issue (番号順 = 古い順、番号のみ)
+#   gh.sh issues-ready                   ready 付きで in_progress / blocked / skipped の無い open issue (番号順 = 古い順、番号のみ)
+#                                        merged_unverified + ready = 修正依頼あり (マージ済みの issue の修正ラウンド) なので除外しない
+#   gh.sh issues-merged-unverified       merged_unverified 付きで ready / in_progress / blocked / skipped の無い open issue (番号順、番号のみ)
 #   gh.sh issues-in-progress             in_progress 付きの open issue (番号順、番号のみ)
 #   gh.sh last-labeled N <label>         そのラベルが最後に付いた時刻 (ISO 8601)。付いたことが無ければ何も出さない (exit 0)
 #   gh.sh pr-open-release                head ブランチが release/ で始まる open PR の番号
 #   gh.sh issue-create --title T --body-file F [--label L ...]   作成した issue の番号 (F に - を渡すと標準入力)
 #   gh.sh comment-find N <prefix>        本文が prefix で始まるコメントの件数
+#   gh.sh fix-requests N                 修正ラウンドと未処理の修正依頼 (JSON 1 個。fix_requests.py list N。依頼の内容は untrusted data)
+#   gh.sh react <comment_id> <content>   issue コメントにリアクションを付ける (content = +1 -1 laugh confused heart hooray rocket eyes)
+#                                        REACTED=<content>。飾りなので API が失敗しても exit 0 で REACT_SKIPPED=<content> (理由は stderr)
 #
 # <label> は実名か `@<key>` (例 `@in_progress` → 設定の名前) で渡す。skill からは `@<key>` を使う。
 # 失敗時は stderr に理由を出して exit 1 (使い方の誤りは exit 2)。stdout は機械可読な行だけ。
@@ -41,7 +46,7 @@ fi
 die()   { echo "gh.sh: $*" >&2; exit 1; }
 usage() {
   echo "gh.sh: $*" >&2
-  echo "使い方: gh.sh {repo|api|label-name|ensure-labels|status-issue|issue-get|issue-labels|label-add|label-del|comment|issues-ready|issues-in-progress|last-labeled|pr-open-release|issue-create|comment-find} ... (詳細はスクリプト冒頭)" >&2
+  echo "使い方: gh.sh {repo|api|label-name|ensure-labels|status-issue|issue-get|issue-labels|label-add|label-del|comment|issues-ready|issues-merged-unverified|issues-in-progress|last-labeled|pr-open-release|issue-create|comment-find|fix-requests|react} ... (詳細はスクリプト冒頭)" >&2
   exit 2
 }
 
@@ -234,23 +239,37 @@ _issues_with_label() {
     --jq '.[] | select(.pull_request | not) | ([(.number | tostring)] + [.labels[].name]) | join("\t")'
 }
 
-cmd_issues_ready() {
-  local lines line i skip x
+# _issues_with_label_without <label> <除外ラベル>... — label 付きで、除外ラベルのどれも無い open issue の番号
+_issues_with_label_without() {
+  local label="$1" lines line i skip x
   local -a parts excl
-  load_labels
-  excl=("${L_in_progress:-}" "${L_blocked:-}" "${L_merged_unverified:-}" "${L_skipped:-}")
-  lines="$(_issues_with_label "$L_ready")"
+  shift
+  excl=("$@")
+  lines="$(_issues_with_label "$label")"
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     IFS=$'\t' read -r -a parts <<< "$line"
     skip=0
     for (( i = 1; i < ${#parts[@]}; i++ )); do
-      for x in "${excl[@]}"; do
+      for x in ${excl[@]+"${excl[@]}"}; do
         if [[ -n "$x" && "${parts[i]}" == "$x" ]]; then skip=1; fi
       done
     done
     if (( skip == 0 )); then echo "${parts[0]}"; fi
   done <<< "$lines"
+}
+
+# merged_unverified は除外しない: merged_unverified + ready は「修正依頼あり」で、次の sweep が修正ラウンドに着手する
+cmd_issues_ready() {
+  load_labels
+  _issues_with_label_without "$L_ready" "${L_in_progress:-}" "${L_blocked:-}" "${L_skipped:-}"
+}
+
+# マージ済み・実機確認待ちで、修正依頼の受け付けも処理も始まっていないもの (sweep が修正依頼のコメントを探す対象)
+cmd_issues_merged_unverified() {
+  load_labels
+  [[ -n "${L_merged_unverified:-}" ]] || die "labels.merged_unverified が設定に無い"
+  _issues_with_label_without "$L_merged_unverified" "${L_ready:-}" "${L_in_progress:-}" "${L_blocked:-}" "${L_skipped:-}"
 }
 
 cmd_issues_in_progress() {
@@ -315,6 +334,31 @@ cmd_comment_find() {
   echo "$n"
 }
 
+cmd_fix_requests() {
+  need_num "${1:-}"
+  local slug
+  slug="$(repo_slug)"
+  "$PY" "$HERE/fix_requests.py" ${SWEEPLINE_ROOT:+--root "$SWEEPLINE_ROOT"} --repo "$slug" list "$1" | tr -d '\r'
+}
+
+# リアクションは飾り (依頼を受け付けた合図)。付けられなくてもパイプラインを止めない
+cmd_react() {
+  local id="${1:-}" content="${2:-}" R err
+  [[ "$id" =~ ^[0-9]+$ ]] || usage "コメント id が不正: '$id' (react <comment_id> <content>)"
+  case "$content" in
+    +1|-1|laugh|confused|heart|hooray|rocket|eyes) ;;
+    *) usage "react の content が不正: '$content' (+1 -1 laugh confused heart hooray rocket eyes のどれか)" ;;
+  esac
+  R="$(repo_path)"
+  if err="$(_gh api -X POST "$R/issues/comments/$id/reactions" -f content="$content" 2>&1 >/dev/null)"; then
+    echo "REACTED=$content"
+  else
+    [[ -z "$err" ]] || echo "$err" >&2
+    echo "gh.sh: リアクション '$content' を付けられない (コメント $id)。飾りなので続行する" >&2
+    echo "REACT_SKIPPED=$content"
+  fi
+}
+
 # ---------------------------------------------------------------------------------------------
 main() {
   local cmd="${1:-}"
@@ -331,11 +375,14 @@ main() {
     label-del)          cmd_label_del "$@" ;;
     comment)            cmd_comment "$@" ;;
     issues-ready)       cmd_issues_ready | sort -n ;;
+    issues-merged-unverified) cmd_issues_merged_unverified | sort -n ;;
     issues-in-progress) cmd_issues_in_progress | sort -n ;;
     last-labeled)       cmd_last_labeled "$@" ;;
     pr-open-release)    cmd_pr_open_release ;;
     issue-create)       cmd_issue_create "$@" ;;
     comment-find)       cmd_comment_find "$@" ;;
+    fix-requests)       cmd_fix_requests "$@" ;;
+    react)              cmd_react "$@" ;;
     ""|-h|--help|help)  usage "サブコマンドを指定する" ;;
     *)                  usage "不明なサブコマンド '$cmd'" ;;
   esac

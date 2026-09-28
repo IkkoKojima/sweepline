@@ -25,7 +25,8 @@ git fetch origin main --tags --quiet
 
 ## 0. 前提と preflight
 
-- `SWEEPLINE_ENV=deploy` でなければ止まる。この環境では impl を動かさない (修正が要るなら impl 環境で `/sweepline:impl` → `/sweepline:release patch` を新しく)
+- `SWEEPLINE_ENV=deploy` でなければ止まる。この環境では impl を動かさない (修正が要るなら修正依頼を出し (`/sweepline:fix N <…>` か issue に
+  `修正 <…>` とコメント)、impl 環境で修正の PR がマージされてから `/sweepline:release patch` を新しく)
 - 各 provider の preflight: `PROVIDER_INDEX=<i> bash $KIT/scripts/providers/<type>.sh preflight` (`PREFLIGHT=ok|ng` を返す)。`supabase-mcp` はスクリプトではなく
   **Supabase コネクター (MCP ツール `list_migrations` 等) が見えるか**で判定する (セッション作成時にオーナーが有効にする)
 - preflight が NG の provider は「NG (理由)」として控える。**その provider に配信対象の差分が無ければ (手順 6 の `only_if_changed`) 問題ない**。差分があるのに NG なら
@@ -100,7 +101,9 @@ main にマージされる web / DB の変更は後方互換 (既存バイナリ
 - 全 provider の完了を issue に記録し、オーナーにチェックリスト (手順 2) を提示して待つ (待つ前に issue 本文を最新にする)
 - 結果 (例: 「#27 OK / #28 NG (Android): 決定ボタンが反応しない」) を処理:
   - OK → `$GH api -X PATCH $R/issues/<n> -f state=closed` + `$GH label-del <n> "$L_MU"`
-  - NG → オーナーの言葉をそのまま本文にし、再現条件・対象版・OS を付けた修正 issue を `$L_READY` で作成 (元 issue にリンク。元 issue は open のまま)
+  - NG → **元 issue に修正依頼を積む** (新しい issue は作らない)。1 行目 `/sweepline:fix`、2 行目からオーナーの言葉をそのまま書き、
+    再現条件・対象版・OS を添えたコメントを元 issue に投稿 (`$GH comment <n> -`) → `$GH label-add <n> "$L_READY"`。
+    `$L_MU` は付けたまま (元 issue は open のまま)。次の sweep が修正ラウンドとして着手する (`/sweepline:impl` の手順 9)
 - 「失敗」が無ければリリース issue を close。失敗があれば open のまま「失敗」を残す (次回の PREV 判定で除外される)
 - 本番昇格 (ストアの製品版 / 審査提出) は手動
 
