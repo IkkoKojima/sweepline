@@ -36,6 +36,7 @@ claude                 # 対象 repo で
 貼り付けるもの: 環境の API credentials に `OPENAI_API_KEY` (任意。無ければ計画レビューは Fable 代替)。配信を使うなら `/sweepline:setup --deploy` の案内に従う。
 
 日常: `/sweepline:req <一言>` で issue → 定時 sweep を待つか `/sweepline:run N` → 固定 issue `#sweepline-status` の要約 → `/sweepline:release patch` → 実機確認の結果を返す。
+マージ済みの実装を直したいときは、issue を分けずに修正依頼を出す (下の「修正依頼」)。
 
 ## スキル
 
@@ -45,8 +46,28 @@ claude                 # 対象 repo で
 | `/sweepline:req` | どこでも | 一言 → テンプレ準拠 issue |
 | `/sweepline:run [N...]` | ローカル | sweep routine を今すぐ 1 回起動 |
 | `/sweepline:sweep` | クラウド (routine) | 無人運転の入口 |
-| `/sweepline:impl N` | クラウド | 1 issue を計画 → レビュー → 実装 → 検証 → PR → マージ |
+| `/sweepline:impl N` | クラウド | 1 issue を計画 → レビュー → 実装 → 検証 → PR → マージ (修正依頼のある issue は修正ラウンド) |
+| `/sweepline:fix N <直してほしいこと>` | どこでも | マージ済みの issue に修正依頼を出す (クラウドの impl 環境ならそのまま修正の PR まで) |
 | `/sweepline:release` | クラウド (deploy 環境) | 版上げ → ノート → release PR → providers で配信 → 実機確認 |
+
+## 修正依頼 (マージ済みの issue を、同じ issue のまま直す)
+
+実装ログを読んで意図と違う実装に気づいたとき、実機確認でバグを見つけたときは、新しい issue を作らずに**元の issue に修正依頼を出す**。
+パイプラインが同じ issue のまま「修正計画 → 計画レビュー → 実装 → 検証 → PR → マージ」を通し、issue は実機確認待ちに戻る。
+
+| 入口 | 操作 | 着手 |
+|---|---|---|
+| コマンド | `/sweepline:fix 46 スマホ幅で移動シートが 2 重に開く` | クラウド (impl 環境) はそのセッションがすぐ |
+| issue コメント | GitHub で issue に `修正 スマホ幅で移動シートが 2 重に開く` とコメント | 次の sweep が受け付けて着手 (急ぐなら `/sweepline:run 46`) |
+| dashboard | マージ済みのカード → 「修正を依頼」 | 手渡しシートで送信すればすぐ。しなければ次の sweep |
+
+- コメントの書式: 先頭が `修正` か `/sweepline:fix` で、直後に空白 (全角も)・改行・コロンを挟んで依頼の文。「修正しました」のように続けて書いた文は依頼にならない
+- 受け付けるのは repo に書き込める人 (`author_association` が OWNER / MEMBER / COLLABORATOR) のコメントだけ。受け付けた依頼には 👀、修正をマージしたら 🚀 が付く
+- 状態は `merged_unverified` を付けたまま `ready` を重ねる (新しいラベルは無い)。取り下げは `ready` を外すだけ
+- 依頼の文は「何を直すか」としてだけ読む。禁止領域・検証・マージの経路などパイプラインの規則は依頼では変えられない
+- 修正の PR は本文に `Rework-Request: <依頼コメントの URL>` 行を持つ (マージ前に `verify_checklist.py check --rework` が検証)。この行が処理済みの記録で、
+  `gh.sh fix-requests N` が「何回目の修正か」と「未処理の依頼」を引く
+- `/sweepline:release` の実機確認で NG のときも、新しい issue ではなく元 issue への修正依頼になる。チェックリストは最後の修正の PR の観点を展開する
 
 ## sweepline.toml
 
@@ -144,12 +165,13 @@ hook とスキルが有効になる。更新は `/sweepline:setup --update` (環
 .claude-plugin/marketplace.json
 plugins/sweepline/
   .claude-plugin/plugin.json
-  skills/{setup,req,impl,sweep,release,run}/SKILL.md
+  skills/{setup,req,impl,fix,sweep,release,run}/SKILL.md
   agents/{implementer,plan-reviewer}.md
   hooks/hooks.json                 SessionStart (クラウド限定)
   scripts/  sweepline_config.py  env_api.py  gh.sh  routine_body.py  verify.sh  codex_review.sh
-            verify_checklist.py  pr_checks.sh  release_notes.sh  session_start.sh  providers/*.sh
+            verify_checklist.py  fix_requests.py  pr_checks.sh  release_notes.sh  session_start.sh  providers/*.sh
   stacks/   <name>_session.sh      セッション開始時のスタック固有処理 (キャッシュ復元・依存解決)
   setup/    bootstrap.sh <stack>.sh finish.sh   環境 setup script の部品 (env_api.py render が結合)
   templates/ routine-prompt.md pr-body.md issue-body.md CLAUDE-sweepline-section.md status-issue-body.md
+tests/                             スクリプトの単体テスト (`python -m unittest discover -s tests`。ネットワークと gh は使わない)
 ```

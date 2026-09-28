@@ -4,7 +4,7 @@
 設計: docs/pipeline/cloud-session-pipeline-plan.md §5.1 / §5.3 / §7、plugin-plan.md §2.5 (pokemonitor)
 
   # マージ前の検証 (/sweepline:impl)。違反があれば exit 1 と理由を stderr に出す
-  verify_checklist.py check --pr-body pr_body.md [--changed-files files.txt] [--base origin/main] [--allow-sweepline]
+  verify_checklist.py check --pr-body pr_body.md [--changed-files files.txt] [--base origin/main] [--allow-sweepline] [--rework]
 
   # リリース用チェックリスト (/sweepline:release)。SINCE..UNTIL のマージ PR と issue から Markdown を生成
   verify_checklist.py generate --since <sha|tag> --until <sha> [--repo owner/name] [--base <branch>] [--out checklist.md]
@@ -13,10 +13,21 @@ PR 本文の規約 (check):
   - `Refs #N` 行が 1 つ以上 (1 行に 1 つ)。`Closes/Fixes/Resolves #N` は禁止 (実機確認まで issue を開けておく)
   - `##` 見出し 6 つがこの順で 1 回ずつ、どれも本文が空でない (無ければ「なし」):
     変更点 / テスト結果 / 実機確認の観点 / 判断した点 / Codex 指摘の採否 / Codex 往復
+  - 修正ラウンド (マージ済み・実機確認待ちの issue への修正依頼に応える PR) は `Refs #N` に加えて
+    `Rework-Request: https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<id>` 行を持つ (行頭から、1 行に 1 つ。
+    応えた修正依頼コメントの数だけ並べる)。--rework を付けるとこの行が 1 つ以上必要。行があれば --rework の有無によらず
+    形を検証する (値が上の URL の形で、<N> が本文の `Refs #N` のどれかと一致)。
+    マージ済み PR のこの行が「処理済みの修正依頼」の記録になる (fix_requests.py が読む)
   - 変更ファイルが禁止パス (sweepline_config.py forbidden = 既定 + sweepline.toml verify.forbidden_paths) に当たらない。
     glob: `*` `?` `[..]` は 1 階層内、`**` は階層をまたぐ。`/` を含まないパターンは任意の階層の basename にも当てる。
     末尾 `/*` は配下全体 (`/**`) とみなす (旧形式の互換)。
     --allow-sweepline で既定の 4 つ (sweepline.toml / .claude/** / .github/** / codemagic.yaml) だけ解除 (owner の保守 PR 用)
+
+チェックリスト (generate) での修正ラウンドの扱い:
+  - 正しい `Rework-Request:` 行を持つ PR の行には `(修正)` の印が付く
+  - 同じ issue の PR のうち、最後の修正の PR より前のものは観点を展開せず
+    「- PR #30 <title> (`sha`) — 観点は PR #35 (修正) にまとめた」の 1 行になる (修正の PR が観点をまとめ直す前提)
+  - 修正の PR が無い issue の出力は従来どおり
 
 設定: repo (owner/name) と labels は sweepline_config (同じディレクトリ) から読む。--repo で上書き可。
 外部コマンド: git、gh (REST `gh api` のみ。GraphQL を使う gh サブコマンドはクラウドセッションで 403 になるため使わない)。
@@ -48,6 +59,14 @@ REQUIRED_HEADINGS = [
 REFS_RE = re.compile(r"^Refs\s+#(\d+)\s*$", re.MULTILINE)
 CLOSES_RE = re.compile(r"\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#\d+", re.IGNORECASE)
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
+# 修正ラウンドの PR が持つ行。見つけるのは緩く (字下げ・大文字小文字・全角コロンの書き損じも拾って check で弾く)、
+# 正しい形は厳しく (行頭から `Rework-Request: <修正依頼コメントの URL>`)。fix_requests.py もこの 2 つを使う
+REWORK_KEY_RE = re.compile(r"^[ \t]*Rework-Request[ \t]*[:：]", re.IGNORECASE)
+REWORK_RE = re.compile(
+    r"^Rework-Request:[ \t]*"
+    r"(https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/issues/(\d+)#issuecomment-(\d+))[ \t]*$"
+)
+REWORK_FORM = "Rework-Request: https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<id>"
 
 
 # ---------------------------------------------------------------------------
@@ -146,13 +165,53 @@ def _section(body: str, heading: str) -> str:
     return _sections(body or "").get(heading, "")
 
 
-def check(body: str, changed_files: list[str], allow_sweepline: bool, forbidden: list[str]) -> list[str]:
+def rework_lines(body: str) -> list[dict]:
+    """本文の `Rework-Request:` らしい行を出現順に返す。
+
+    {"line": 行 (前後の空白を除く), "ok": 形が規約どおりか, "url", "owner", "repo", "issue": int, "comment_id": int}
+    (ok でない行は line と ok だけ)。issue 番号と `Refs #N` の突き合わせは呼び出し側がする。
+    """
+    out: list[dict] = []
+    for ln in (body or "").replace("\r\n", "\n").split("\n"):
+        if not REWORK_KEY_RE.match(ln):
+            continue
+        m = REWORK_RE.match(ln)
+        if not m:
+            out.append({"line": ln.strip(), "ok": False})
+            continue
+        out.append({
+            "line": ln.strip(), "ok": True, "url": m.group(1), "owner": m.group(2), "repo": m.group(3),
+            "issue": int(m.group(4)), "comment_id": int(m.group(5)),
+        })
+    return out
+
+
+def rework_issues(body: str) -> list[int]:
+    """正しい `Rework-Request:` 行 (形が規約どおりで、issue 番号が本文の `Refs #N` のどれか) が指す issue 番号 (昇順、重複なし)。"""
+    body = (body or "").replace("\r\n", "\n")
+    refs = {int(r) for r in REFS_RE.findall(body)}
+    return sorted({r["issue"] for r in rework_lines(body) if r["ok"] and r["issue"] in refs})
+
+
+def check(body: str, changed_files: list[str], allow_sweepline: bool, forbidden: list[str],
+          rework: bool = False) -> list[str]:
+    """PR 本文と変更ファイルの違反を列挙する (空なら規約どおり)。rework は修正ラウンドの PR (`Rework-Request:` 行が必須)。"""
     errors: list[str] = []
     body = body.replace("\r\n", "\n")
     if not REFS_RE.findall(body):
         errors.append("`Refs #<issue>` 行が無い (1 行に 1 つ)")
     if CLOSES_RE.search(body):
         errors.append("`Closes/Fixes/Resolves #N` は使わない (実機確認まで issue を開けておく)")
+
+    refs = {int(r) for r in REFS_RE.findall(body)}
+    rws = rework_lines(body)
+    if rework and not rws:
+        errors.append(f"`Rework-Request:` 行が無い (修正ラウンドの PR は 1 つ以上、1 行に 1 つ: `{REWORK_FORM}`)")
+    for r in rws:
+        if not r["ok"]:
+            errors.append(f"`Rework-Request:` 行の形が規約と違う: `{r['line']}` (行頭から `{REWORK_FORM}`)")
+        elif r["issue"] not in refs:
+            errors.append(f"`Rework-Request:` の issue #{r['issue']} が `Refs #N` 行に無い: {r['url']}")
 
     order = [k for k in (_key_of(h) for _, h in _headings(body)) if k]
     counts = {r: order.count(r) for r in REQUIRED_HEADINGS}
@@ -227,6 +286,56 @@ def _default_branch(repo: str) -> str:
         return "main"
 
 
+def pr_entry(p: dict) -> dict:
+    """マージ済み PR (REST の JSON) → チェックリストの 1 件。
+
+    refs は本文の `Refs #N` の番号 (文字列、出現順、重複なし)。rework は本文に正しい `Rework-Request:` 行があるか、
+    rework_issues はその行が指す issue 番号 (PR が複数の issue を Refs するとき、修正なのは依頼のあった issue だけ)。
+    """
+    body = (p.get("body") or "").replace("\r\n", "\n")
+    rw = rework_issues(body)
+    return {
+        "pr": p["number"],
+        "title": p["title"],
+        "sha": p["merge_commit_sha"][:7],
+        "observe": _section(body, "## 実機確認の観点"),
+        "decisions": _section(body, "## 判断した点"),
+        "codex": _section(body, "## Codex 指摘の採否"),
+        "refs": list(dict.fromkeys(REFS_RE.findall(body))),
+        "rework": bool(rw),
+        "rework_issues": rw,
+    }
+
+
+def issue_lines(num: str | int, entries: list[dict]) -> list[str]:
+    """issue 1 件ぶんの PR の行 (entries は pr_entry の結果をマージ順に)。
+
+    その issue の修正の PR には `(修正)` を付ける。最後の修正の PR より前の PR は観点を展開せず 1 行にまとめる
+    (修正の PR が観点をまとめ直す)。修正の PR が無ければ従来の出力と同じ。
+    """
+    n = int(num)
+    is_rework = [n in (e.get("rework_issues") or ()) for e in entries]
+    last = max((i for i, r in enumerate(is_rework) if r), default=-1)
+    out: list[str] = []
+    for i, e in enumerate(entries):
+        head = f"- PR #{e['pr']} {e['title']} (`{e['sha']}`)"
+        if is_rework[i]:
+            head += " (修正)"
+        if i < last:
+            out.append(f"{head} — 観点は PR #{entries[last]['pr']} (修正) にまとめた")
+            continue
+        out.append(head)
+        out.append("  - [ ] 実機確認の観点:")
+        out.extend(f"    {ln}" for ln in (e["observe"] or "(未記入)").splitlines())
+        if e["decisions"] and e["decisions"] != "なし":
+            out.append("  - 判断した点:")
+            out.extend(f"    {ln}" for ln in e["decisions"].splitlines())
+        if e["codex"] and e["codex"] != "なし":
+            out.append("  - Codex 指摘の採否 (未解決があれば確認):")
+            out.extend(f"    {ln}" for ln in e["codex"].splitlines())
+    return out
+
+
 def generate(repo: str, since: str, until: str, labels: dict, base: str | None, root: str) -> str:
     shas = set(_run(["git", "rev-list", f"{since}..{until}"], cwd=root).split())
     if not shas:
@@ -247,19 +356,10 @@ def generate(repo: str, since: str, until: str, labels: dict, base: str | None, 
     by_issue: "OrderedDict[str, list[dict]]" = OrderedDict()
     unregistered: list[dict] = []
     for p in sorted(merged, key=lambda x: x["merged_at"]):
-        body = (p.get("body") or "").replace("\r\n", "\n")
-        refs = REFS_RE.findall(body)
-        entry = {
-            "pr": p["number"],
-            "title": p["title"],
-            "sha": p["merge_commit_sha"][:7],
-            "observe": _section(body, "## 実機確認の観点"),
-            "decisions": _section(body, "## 判断した点"),
-            "codex": _section(body, "## Codex 指摘の採否"),
-        }
-        if not refs or not entry["observe"]:
+        entry = pr_entry(p)
+        if not entry["refs"] or not entry["observe"]:
             unregistered.append(entry)
-        for r in dict.fromkeys(refs):
+        for r in entry["refs"]:
             by_issue.setdefault(r, []).append(entry)
 
     # PR の無い commit (直 push / 旧形式)
@@ -293,16 +393,7 @@ def generate(repo: str, since: str, until: str, labels: dict, base: str | None, 
         except subprocess.CalledProcessError:
             pass
         out.append(f"## #{num} {title}".rstrip())
-        for e in entries:
-            out.append(f"- PR #{e['pr']} {e['title']} (`{e['sha']}`)")
-            out.append("  - [ ] 実機確認の観点:")
-            out.extend(f"    {ln}" for ln in (e["observe"] or "(未記入)").splitlines())
-            if e["decisions"] and e["decisions"] != "なし":
-                out.append("  - 判断した点:")
-                out.extend(f"    {ln}" for ln in e["decisions"].splitlines())
-            if e["codex"] and e["codex"] != "なし":
-                out.append("  - Codex 指摘の採否 (未解決があれば確認):")
-                out.extend(f"    {ln}" for ln in e["codex"].splitlines())
+        out.extend(issue_lines(num, entries))
         out.append("")
     if unregistered:
         out.append("## 観点未登録の PR (Refs か「実機確認の観点」が無い)")
@@ -339,6 +430,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--base", default="origin/main", help="--changed-files が無いときの比較元 (既定 origin/main)")
     c.add_argument("--allow-sweepline", action="store_true",
                    help="sweepline.toml / .claude/** / .github/** / codemagic.yaml の変更を許す (owner の保守 PR)")
+    c.add_argument("--rework", action="store_true",
+                   help="修正ラウンドの PR (`Rework-Request: <修正依頼コメントの URL>` 行が 1 つ以上必要)")
     g = sub.add_parser("generate")
     g.add_argument("--since", required=True)
     g.add_argument("--until", required=True)
@@ -364,7 +457,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"変更ファイルを取得できない (git diff --name-only {a.base}...HEAD): {detail}\n--changed-files で渡すか --base を直す",
                       file=sys.stderr)
                 return 2
-        errs = check(body, files, a.allow_sweepline, pc.forbidden(cfg))
+        errs = check(body, files, a.allow_sweepline, pc.forbidden(cfg), rework=a.rework)
         if errs:
             print("PR 本文 / 変更範囲の検証に失敗:", file=sys.stderr)
             for e in errs:
