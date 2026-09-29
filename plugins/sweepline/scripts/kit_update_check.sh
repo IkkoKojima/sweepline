@@ -27,8 +27,14 @@ if curl -fsSL --max-time 5 -o "$TMP" "https://raw.githubusercontent.com/$KIT_REP
 fi
 rm -f "$TMP" 2>/dev/null
 
-# main の sha (sweepline.toml の kit に書く値)。api.github.com は公開 repo なら認証なしで読める (届かなければ unknown)
-LATEST_SHA="$(curl -fsSL --max-time 5 -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$KIT_REPO/commits/main" 2>/dev/null \
+# main の sha (sweepline.toml の kit に書く値)。クラウドセッションの GitHub proxy は attach していない repo への api.github.com を
+# 403 にする (公開 repo でも) ので git ls-remote を先に使い、api.github.com は git が無いときの予備 (届かなければ unknown)
+LATEST_SHA=""
+if command -v git >/dev/null 2>&1; then
+  if command -v timeout >/dev/null 2>&1; then TO="timeout 10"; else TO=""; fi
+  LATEST_SHA="$(GIT_TERMINAL_PROMPT=0 $TO git ls-remote "https://github.com/$KIT_REPO.git" refs/heads/main 2>/dev/null | cut -f1 | tr -d '\r')"
+fi
+[[ -n "$LATEST_SHA" ]] || LATEST_SHA="$(curl -fsSL --max-time 5 -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$KIT_REPO/commits/main" 2>/dev/null \
   | "$PY" -c 'import json,sys; print(json.load(sys.stdin).get("sha", ""))' 2>/dev/null | tr -d '\r')"
 
 UPDATE=unknown

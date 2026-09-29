@@ -76,8 +76,12 @@ claude                 # 対象 repo で
 SKILL.md を読んで従う)・スクリプト・agents はそれを使う (`scripts/live_kit.sh`)。**更新 = `kit` の 1 行を変えて main に入れるだけ**で、
 ローカルの環境 API は要らない。sweepline dashboard の「更新する」はこれを利用者のトークンで行う (クラウドセッションの `/sweepline:setup --update` も同じ)。
 
+- 取得は `git fetch --depth 1` (sha / タグ / ブランチ) で、codeload の tarball は予備。クラウドセッションの GitHub proxy は、セッションに
+  attach していない repo への api.github.com / codeload.github.com を公開 repo でも 403 にするが、git と raw.githubusercontent.com は通る
 - 環境のスナップショットに焼いてある kit (ランチャ) は、配布元に届かないときの予備。ランチャの約束事や stack のツールチェーン (Flutter の版・apt) が
   変わったときだけ、ローカルの `/sweepline:setup --update` で作り直す
+- `kit` が 0.5.0 より前の版 (live を知らない) を指すときは live に置かず、スナップショットの kit で動く (`SYNCED=skipped`)。古いスキルが新しい
+  スクリプトを使う混在を避けるため。dashboard の「更新する」で `kit` を上げれば揃う
 - sweep の要約とセッション開始時の 1 行に、使っている版 (live / スナップショット) と新しい版の有無が出る (`scripts/kit_update_check.sh`)
 - 版を上げるとき (作者): `python3 plugins/sweepline/scripts/bump_version.py X.Y.Z` で `plugin.json` と全文書の版の注釈を揃え、main に入れて `vX.Y.Z` のタグを打つ
 - dashboard との約束事: 新しい約束事 (ラベル・コメントの書式) に依存する機能は最低版を宣言し、プラグインは後方互換を保つ
