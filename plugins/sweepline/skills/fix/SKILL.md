@@ -5,11 +5,16 @@ description: マージ済み・実機確認待ちの issue に修正依頼を出
 
 # /sweepline:fix N <直してほしいこと>
 
+<!-- sweepline skill version: 0.5.0 -->
+> **live kit** (クラウドセッションだけ): まず `bash "${CLAUDE_PLUGIN_ROOT:-/opt/sweepline/kit/plugins/sweepline}/scripts/live_kit.sh" status` を実行する。
+> `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.0) と違えば**、`$LIVE/skills/fix/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
+> (この文書の続きは使わない)。同じ版か `LIVE=none` なら、このまま続ける。
+
 実装ログ (計画コメント・PR) を読んで意図と違う実装に気づいたとき、実機確認でバグを見つけたときに、**同じ issue のまま**パイプラインに直させる。
 新しい issue は作らない。引数の「直してほしいこと」はセッションの利用者 (owner) の入力なので、言い換えずにそのまま依頼として記録する。
 
 ```bash
-KIT="${CLAUDE_PLUGIN_ROOT:-}"; [ -d "$KIT/scripts" ] || KIT=/opt/sweepline/kit/plugins/sweepline
+KIT=""; for d in /opt/sweepline/live/plugins/sweepline "$HOME/sweepline/live/plugins/sweepline" "${CLAUDE_PLUGIN_ROOT:-}" /opt/sweepline/kit/plugins/sweepline; do [ -d "$d/scripts" ] && { KIT="$d"; break; }; done   # live (toml の kit の版) を優先
 [ -d "$KIT/scripts" ] || KIT="$(ls -d ~/.claude/plugins/marketplaces/*/plugins/sweepline 2>/dev/null | head -1)"   # marketplace clone (marketplace update で最新になる) を優先
 [ -d "$KIT/scripts" ] || KIT="$(dirname "$(dirname "$(find ~/.claude/plugins -path '*sweepline*' -path '*/scripts/sweepline_config.py' 2>/dev/null | head -1)")")"
 PC="python3 $KIT/scripts/sweepline_config.py"; GH="bash $KIT/scripts/gh.sh"

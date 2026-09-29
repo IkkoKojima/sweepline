@@ -5,11 +5,16 @@ description: 配信セッション (deploy 環境、オーナー起動)。対象
 
 # /sweepline:release <minor|patch|X.Y.Z[+N]> [--scope type1,type2] [--dry-run]
 
+<!-- sweepline skill version: 0.5.0 -->
+> **live kit** (クラウドセッションだけ): まず `bash "${CLAUDE_PLUGIN_ROOT:-/opt/sweepline/kit/plugins/sweepline}/scripts/live_kit.sh" status` を実行する。
+> `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.0) と違えば**、`$LIVE/skills/release/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
+> (この文書の続きは使わない)。同じ版か `LIVE=none` なら、このまま続ける。
+
 オーナーが deploy 環境 (`SWEEPLINE_ENV=deploy`) で起動する。**状態はリリース issue `[release] v<ver>` に持つ** (セッションは GitHub Release を作れない)。
 待ちに入る前に必ず issue 本文を更新し、再開時は issue 本文の「未」の工程だけを実行する。GitHub 操作は REST と GitHub MCP のみ。
 
 ```bash
-KIT="${CLAUDE_PLUGIN_ROOT:-}"; [ -d "$KIT/scripts" ] || KIT=/opt/sweepline/kit/plugins/sweepline
+KIT=""; for d in /opt/sweepline/live/plugins/sweepline "$HOME/sweepline/live/plugins/sweepline" "${CLAUDE_PLUGIN_ROOT:-}" /opt/sweepline/kit/plugins/sweepline; do [ -d "$d/scripts" ] && { KIT="$d"; break; }; done   # live (toml の kit の版) を優先
 [ -d "$KIT/scripts" ] || KIT="$(ls -d ~/.claude/plugins/marketplaces/*/plugins/sweepline 2>/dev/null | head -1)"   # marketplace clone (marketplace update で最新になる) を優先
 [ -d "$KIT/scripts" ] || KIT="$(dirname "$(dirname "$(find ~/.claude/plugins -path '*sweepline*' -path '*/scripts/sweepline_config.py' 2>/dev/null | head -1)")")"
 PC="python3 $KIT/scripts/sweepline_config.py"; GH="bash $KIT/scripts/gh.sh"

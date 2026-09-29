@@ -69,15 +69,18 @@ claude                 # 対象 repo で
   `gh.sh fix-requests N` が「何回目の修正か」と「未処理の依頼」を引く
 - `/sweepline:release` の実機確認で NG のときも、新しい issue ではなく元 issue への修正依頼になる。チェックリストは最後の修正の PR の観点を展開する
 
-## 版の更新 (kit の固定と、dashboard との版差)
+## 版の更新 (live kit、0.5.0 から)
 
-各 repo のプラグインは `sweepline.toml` の `kit` (commit sha) とクラウド環境の init_script で固定されている (無人の routine の下で勝手に変わらないよう、
-上げるタイミングは owner が決める)。更新は **owner がローカルの Claude Code でその repo を開き** `/sweepline:setup --update` (環境の init_script と
-`kit` を最新にして commit → main へ)。クラウドセッションには利用者の claude.ai OAuth が置かれないため、クラウドからは環境を書き換えられない。
+各 repo が使うプラグインの版は `sweepline.toml` の `kit` で決まる (commit sha / タグ `0.5.0` / `latest` = 配布元の main に追従)。
+クラウドセッションの開始時に SessionStart hook がその版を配布元から取って `/opt/sweepline/live` に置き、スキル (文書の版が違えば live の
+SKILL.md を読んで従う)・スクリプト・agents はそれを使う (`scripts/live_kit.sh`)。**更新 = `kit` の 1 行を変えて main に入れるだけ**で、
+ローカルの環境 API は要らない。sweepline dashboard の「更新する」はこれを利用者のトークンで行う (クラウドセッションの `/sweepline:setup --update` も同じ)。
 
-- sweep の要約と、クラウドセッション開始時の 1 行に、新しい版の有無が出る (`scripts/kit_update_check.sh`。配布元 main の `plugin.json` と比べる)
-- sweepline dashboard は `kit` から版を引き、版に依る機能 (修正依頼 = 0.4.0 以上) を満たさない repo では出さず、更新の案内を出す
-- 約束事: dashboard が新しい約束事 (ラベル・コメントの書式) に依存する機能を足すときは最低版を宣言し、プラグインは後方互換を保つ
+- 環境のスナップショットに焼いてある kit (ランチャ) は、配布元に届かないときの予備。ランチャの約束事や stack のツールチェーン (Flutter の版・apt) が
+  変わったときだけ、ローカルの `/sweepline:setup --update` で作り直す
+- sweep の要約とセッション開始時の 1 行に、使っている版 (live / スナップショット) と新しい版の有無が出る (`scripts/kit_update_check.sh`)
+- 版を上げるとき (作者): `python3 plugins/sweepline/scripts/bump_version.py X.Y.Z` で `plugin.json` と全文書の版の注釈を揃え、main に入れて `vX.Y.Z` のタグを打つ
+- dashboard との約束事: 新しい約束事 (ラベル・コメントの書式) に依存する機能は最低版を宣言し、プラグインは後方互換を保つ
 
 ## sweepline.toml
 
@@ -161,7 +164,7 @@ workflows = ["android-internal", "ios-testflight"]
 ## プラグインの更新 (作者向け)
 
 `claude plugin update` は `plugins/sweepline/.claude-plugin/plugin.json` の `version` が上がったときだけ新しい版を取り込む。
-公開する変更を main に入れたら `version` (と marketplace.json の同名項目) を必ず上げる。利用側は `claude plugin marketplace update sweepline && claude plugin update sweepline@sweepline`。
+公開する変更を main に入れたら `scripts/bump_version.py X.Y.Z` で `version` と文書の版の注釈を必ず上げる (tests が揃いを確かめる)。利用側は `claude plugin marketplace update sweepline && claude plugin update sweepline@sweepline`。
 
 ## 配布の仕組み
 
@@ -179,7 +182,8 @@ plugins/sweepline/
   agents/{implementer,plan-reviewer}.md
   hooks/hooks.json                 SessionStart (クラウド限定)
   scripts/  sweepline_config.py  env_api.py  gh.sh  routine_body.py  verify.sh  codex_review.sh
-            verify_checklist.py  fix_requests.py  kit_update_check.sh  pr_checks.sh  release_notes.sh  session_start.sh  providers/*.sh
+            verify_checklist.py  fix_requests.py  kit_update_check.sh  live_kit.sh  bump_version.py  pr_checks.sh
+            release_notes.sh  session_start.sh  providers/*.sh
   stacks/   <name>_session.sh      セッション開始時のスタック固有処理 (キャッシュ復元・依存解決)
   setup/    bootstrap.sh <stack>.sh finish.sh   環境 setup script の部品 (env_api.py render が結合)
   templates/ routine-prompt.md pr-body.md issue-body.md CLAUDE-sweepline-section.md status-issue-body.md

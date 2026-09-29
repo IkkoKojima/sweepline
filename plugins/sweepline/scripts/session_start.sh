@@ -14,9 +14,20 @@
 [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 
-KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # = CLAUDE_PLUGIN_ROOT
+KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # = CLAUDE_PLUGIN_ROOT (スナップショットの kit)
 ROOT="${SWEEPLINE_ROOT:-/opt/sweepline}"; [ -d "$ROOT" ] || ROOT="$HOME/sweepline"
 [ -f "$ROOT/env.sh" ] && . "$ROOT/env.sh"
+
+# ---- live kit: repo の sweepline.toml の kit が指す版を配布元から取り、以後の hook / スキル / スクリプトはそれを使う ----
+# (環境 API を使わずにプラグインを更新するため。取れなければスナップショットの kit のまま。scripts/live_kit.sh)
+if [ -z "${SWEEPLINE_LIVE_HOOK:-}" ]; then
+  SYNC="$(bash "$KIT/scripts/live_kit.sh" sync 2>/dev/null)"
+  echo "[sweepline] ${SYNC:-SYNCED=failed (live_kit.sh が動かない)}"
+  LIVE="$(bash "$KIT/scripts/live_kit.sh" path 2>/dev/null)"
+  if [ -n "$LIVE" ] && [ "$LIVE" != "$KIT" ] && [ -f "$LIVE/scripts/session_start.sh" ]; then
+    SWEEPLINE_LIVE_HOOK=1 exec bash "$LIVE/scripts/session_start.sh"
+  fi
+fi
 LOG_DIR="$ROOT/logs"
 if ! mkdir -p "$LOG_DIR" 2>/dev/null || [ ! -w "$LOG_DIR" ]; then LOG_DIR="${TMPDIR:-/tmp}/sweepline-logs"; mkdir -p "$LOG_DIR"; fi
 export SWEEPLINE_ROOT="$ROOT" SWEEPLINE_KIT="$KIT" SWEEPLINE_LOG_DIR="$LOG_DIR"

@@ -5,12 +5,17 @@ description: オーナーの一言から対話で要件を固め、テンプレ�
 
 # /sweepline:req [--backlog] <一言>
 
+<!-- sweepline skill version: 0.5.0 -->
+> **live kit** (クラウドセッションだけ): まず `bash "${CLAUDE_PLUGIN_ROOT:-/opt/sweepline/kit/plugins/sweepline}/scripts/live_kit.sh" status` を実行する。
+> `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.0) と違えば**、`$LIVE/skills/req/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
+> (この文書の続きは使わない)。同じ版か `LIVE=none` なら、このまま続ける。
+
 `--backlog` は sweepline dashboard の「Claude Code で要件を詰める」ボタンから渡される。付いていれば **作成だけ** (ラベルを付けない = バックログ) を既定にし、手順 6 の文言は「この「OK」でラベル無しの issue を作ります (着手は dashboard かラベルで)」に変え、手順 7 の「今すぐ回しますか」は尋ねない。
 
 思いつき (例: 「設定画面にダークモード切替を足したい」) を、パイプラインが着手できる issue に落とす。GitHub 操作は REST (`gh.sh`)。
 
 ```bash
-KIT="${CLAUDE_PLUGIN_ROOT:-}"; [ -d "$KIT/scripts" ] || KIT=/opt/sweepline/kit/plugins/sweepline
+KIT=""; for d in /opt/sweepline/live/plugins/sweepline "$HOME/sweepline/live/plugins/sweepline" "${CLAUDE_PLUGIN_ROOT:-}" /opt/sweepline/kit/plugins/sweepline; do [ -d "$d/scripts" ] && { KIT="$d"; break; }; done   # live (toml の kit の版) を優先
 [ -d "$KIT/scripts" ] || KIT="$(ls -d ~/.claude/plugins/marketplaces/*/plugins/sweepline 2>/dev/null | head -1)"   # marketplace clone (marketplace update で最新になる) を優先
 [ -d "$KIT/scripts" ] || KIT="$(dirname "$(dirname "$(find ~/.claude/plugins -path '*sweepline*' -path '*/scripts/sweepline_config.py' 2>/dev/null | head -1)")")"
 PC="python3 $KIT/scripts/sweepline_config.py"; GH="bash $KIT/scripts/gh.sh"
