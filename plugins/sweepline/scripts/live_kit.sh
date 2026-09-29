@@ -71,7 +71,7 @@ fetch_git() {
               && git checkout -q FETCH_HEAD 2>&1)"; then
     FETCH_ERR="git $ref: ${err##*$'\n'}"; rm -rf "$out"; return 1
   fi
-  sha="$(cd "$out" && git rev-parse FETCH_HEAD 2>/dev/null)"
+  sha="$(cd "$out" && git rev-parse 'FETCH_HEAD^{commit}' 2>/dev/null)"   # 注釈付きタグでもタグ object でなく commit の sha
   rm -rf "$out/.git"
   [[ -f "$out/.claude-plugin/marketplace.json" ]] || { FETCH_ERR="git $ref: marketplace.json が無い"; rm -rf "$out"; return 1; }
   printf '%s\n' "$ref" > "$out/.ref"; [[ -n "$sha" ]] && printf '%s\n' "$sha" > "$out/.sha"
