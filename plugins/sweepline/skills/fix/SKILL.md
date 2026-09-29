@@ -5,9 +5,9 @@ description: マージ済み・実機確認待ちの issue に修正依頼を出
 
 # /sweepline:fix N <直してほしいこと>
 
-<!-- sweepline skill version: 0.5.1 -->
+<!-- sweepline skill version: 0.5.2 -->
 > **live kit** (クラウドセッションだけ): まず `bash "${CLAUDE_PLUGIN_ROOT:-/opt/sweepline/kit/plugins/sweepline}/scripts/live_kit.sh" status` を実行する。
-> `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.0) と違えば**、`$LIVE/skills/fix/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
+> `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.2) と違えば**、`$LIVE/skills/fix/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
 > (この文書の続きは使わない)。同じ版か `LIVE=none` なら、このまま続ける。
 
 実装ログ (計画コメント・PR) を読んで意図と違う実装に気づいたとき、実機確認でバグを見つけたときに、**同じ issue のまま**パイプラインに直させる。

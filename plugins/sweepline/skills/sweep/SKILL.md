@@ -5,9 +5,9 @@ description: routine が呼ぶ無人運転の入口。リリースロック → 
 
 # /sweepline:sweep [--dry-run]
 
-<!-- sweepline skill version: 0.5.1 -->
+<!-- sweepline skill version: 0.5.2 -->
 > **live kit** (クラウドセッションだけ): まず `bash "${CLAUDE_PLUGIN_ROOT:-/opt/sweepline/kit/plugins/sweepline}/scripts/live_kit.sh" status` を実行する。
-> `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.0) と違えば**、`$LIVE/skills/sweep/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
+> `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.2) と違えば**、`$LIVE/skills/sweep/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
 > (この文書の続きは使わない)。同じ版か `LIVE=none` なら、このまま続ける。
 
 無人で走る前提 (質問しない)。GitHub 操作は REST (`gh.sh`) と GitHub MCP のみ。

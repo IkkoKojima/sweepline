@@ -17,6 +17,7 @@ from pathlib import Path
 PLUGIN = Path(__file__).resolve().parent.parent
 MANIFEST = PLUGIN / ".claude-plugin" / "plugin.json"
 MARKER_RE = re.compile(r"<!-- sweepline skill version: ([^ ]+) -->")
+PROSE_RE = re.compile(r"この文書の版 \((\d+(?:\.\d+)*)\)")   # live kit の節の本文 (モデルが VERSION= と見比べる数字)
 VERSION_RE = re.compile(r"^\d+(\.\d+)*$")
 
 
@@ -33,9 +34,13 @@ def check() -> list[str]:
     want = manifest_version()
     bad = []
     for doc in documents():
-        found = MARKER_RE.findall(doc.read_text(encoding="utf-8"))
+        body = doc.read_text(encoding="utf-8")
+        found = MARKER_RE.findall(body)
         if found != [want]:
             bad.append(f"{doc.relative_to(PLUGIN)}: {found or '注釈なし'} (plugin.json は {want})")
+        prose = PROSE_RE.findall(body)
+        if any(p != want for p in prose):
+            bad.append(f"{doc.relative_to(PLUGIN)}: 本文の「この文書の版 ({', '.join(prose)})」が plugin.json ({want}) と違う")
     return bad
 
 
@@ -49,7 +54,9 @@ def bump(version: str) -> None:
         body = doc.read_text(encoding="utf-8")
         if not MARKER_RE.search(body):
             raise SystemExit(f"bump_version: 版の注釈が無い: {doc.relative_to(PLUGIN)}")
-        doc.write_text(MARKER_RE.sub(f"<!-- sweepline skill version: {version} -->", body), encoding="utf-8", newline="\n")
+        body = MARKER_RE.sub(f"<!-- sweepline skill version: {version} -->", body)
+        body = PROSE_RE.sub(f"この文書の版 ({version})", body)
+        doc.write_text(body, encoding="utf-8", newline="\n")
     print(f"version {version}: plugin.json と {len(documents())} 文書")
 
 

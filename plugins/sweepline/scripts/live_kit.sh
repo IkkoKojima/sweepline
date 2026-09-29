@@ -57,19 +57,47 @@ cmd_status() {
   echo "LIVE=$live VERSION=${lv:-unknown} SNAPSHOT=$(version_of "$SELF_KIT") REF=${ref:-none}"
 }
 
-# 配布元の tarball を <出力ディレクトリ> に展開する。タグは `v` 付きも試す。成功なら 0
-fetch_kit() {
-  local ref="$1" out="$2" tgz try
+# 配布元の <ref> (sha / タグ / ブランチ) を <出力ディレクトリ> に取る。タグは `v` 付きも試す。成功なら 0。失敗の理由は FETCH_ERR に残す。
+# クラウドセッションの GitHub proxy は、セッションに attach していない repo への api.github.com / codeload.github.com を 403 にする
+# (公開 repo でも)。git の fetch は通るので git を先に使い、tarball (codeload) は git が無い / 通らない環境の予備。
+FETCH_ERR=""
+with_timeout() { if command -v timeout >/dev/null 2>&1; then timeout 120 "$@"; else "$@"; fi; }
+
+fetch_git() {
+  local ref="$1" out="$2" err sha
+  command -v git >/dev/null 2>&1 || { FETCH_ERR="git が無い"; return 1; }
+  rm -rf "$out"; mkdir -p "$out" || return 1
+  if ! err="$(cd "$out" && git init -q 2>&1 && GIT_TERMINAL_PROMPT=0 with_timeout git fetch -q --depth 1 "https://github.com/$KIT_REPO.git" "$ref" 2>&1 \
+              && git checkout -q FETCH_HEAD 2>&1)"; then
+    FETCH_ERR="git $ref: ${err##*$'\n'}"; rm -rf "$out"; return 1
+  fi
+  sha="$(cd "$out" && git rev-parse FETCH_HEAD 2>/dev/null)"
+  rm -rf "$out/.git"
+  [[ -f "$out/.claude-plugin/marketplace.json" ]] || { FETCH_ERR="git $ref: marketplace.json が無い"; rm -rf "$out"; return 1; }
+  printf '%s\n' "$ref" > "$out/.ref"; [[ -n "$sha" ]] && printf '%s\n' "$sha" > "$out/.sha"
+  return 0
+}
+
+fetch_tarball() {
+  local ref="$1" out="$2" tgz err
   tgz="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/sweepline-live.tgz")"
+  if ! err="$(curl -fsSL --max-time 90 -o "$tgz" "https://codeload.github.com/$KIT_REPO/tar.gz/$ref" 2>&1)"; then
+    FETCH_ERR="tarball $ref: ${err##*$'\n'}"; rm -f "$tgz"; return 1
+  fi
+  rm -rf "$out"
+  if mkdir -p "$out" && tar -xzf "$tgz" -C "$out" --strip-components=1 2>/dev/null && [[ -f "$out/.claude-plugin/marketplace.json" ]]; then
+    rm -f "$tgz"; printf '%s\n' "$ref" > "$out/.ref"; [[ "$ref" =~ ^[0-9a-f]{40}$ ]] && printf '%s\n' "$ref" > "$out/.sha"
+    return 0
+  fi
+  FETCH_ERR="tarball $ref: 展開できない"; rm -f "$tgz"; rm -rf "$out"; return 1
+}
+
+fetch_kit() {
+  local ref="$1" out="$2" try
   for try in "$ref" "v$ref"; do
-    if curl -fsSL --max-time 90 -o "$tgz" "https://codeload.github.com/$KIT_REPO/tar.gz/$try" 2>/dev/null \
-       && mkdir -p "$out" && tar -xzf "$tgz" -C "$out" --strip-components=1 2>/dev/null \
-       && [[ -f "$out/.claude-plugin/marketplace.json" ]]; then
-      rm -f "$tgz"; printf '%s\n' "$try" > "$out/.ref"; return 0
-    fi
-    rm -rf "$out"
+    fetch_git "$try" "$out" && return 0
+    fetch_tarball "$try" "$out" && return 0
   done
-  rm -f "$tgz"
   return 1
 }
 
@@ -86,12 +114,17 @@ cmd_sync() {
   if [[ -n "$snap_sha" && "$ref" == "$snap_sha" ]]; then echo "SYNCED=snapshot REF=$ref VERSION=${snap_ver:-unknown} (toml の kit はスナップショットと同じ)"; return 0; fi
   live="$root/live"; new="$root/live.new"
   if fetch_kit "$ref" "$new"; then
+    # live を知らない版 (0.5.0 より前) を live に置くと、その古いスキルがスナップショットの新しいスクリプトを使う混在になるので使わない
+    if [[ ! -f "$new/plugins/sweepline/scripts/live_kit.sh" ]]; then
+      live_ver="$(version_of "$new/plugins/sweepline")"; rm -rf "$new"
+      echo "SYNCED=skipped REF=$ref VERSION=${snap_ver:-unknown} (toml の kit ${live_ver:-$ref} は live 非対応の版 → スナップショットの kit を使う。sweepline.toml の kit を上げる)"; return 0
+    fi
     rm -rf "$live" && mv "$new" "$live" || { rm -rf "$new"; echo "SYNCED=failed REF=$ref VERSION=${snap_ver:-unknown} (live の入れ替えに失敗 → スナップショットの kit を使う)"; return 0; }
     chmod -R a+rX "$live" 2>/dev/null || true
     live_ver="$(version_of "$live/plugins/sweepline")"
     echo "SYNCED=live REF=$(cat "$live/.ref" 2>/dev/null || echo "$ref") VERSION=${live_ver:-unknown} SNAPSHOT=${snap_ver:-unknown} DIR=$live/plugins/sweepline"
   else
-    echo "SYNCED=failed REF=$ref VERSION=${snap_ver:-unknown} (配布元 codeload.github.com から取れない → スナップショットの kit を使う。kit の値が sha / タグ / latest か確認)"
+    echo "SYNCED=failed REF=$ref VERSION=${snap_ver:-unknown} (配布元 github.com/$KIT_REPO から取れない: ${FETCH_ERR:-?} → スナップショットの kit を使う。kit の値が sha / タグ / latest か確認)"
   fi
   return 0
 }
