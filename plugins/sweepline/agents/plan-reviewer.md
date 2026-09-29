@@ -4,7 +4,7 @@ description: 計画レビューの代替レビュアー (Fable、新しいコン
 model: fable
 ---
 
-<!-- sweepline skill version: 0.5.0 -->
+<!-- sweepline skill version: 0.5.1 -->
 > **live kit** (クラウドセッションだけ): まず `bash "${CLAUDE_PLUGIN_ROOT:-/opt/sweepline/kit/plugins/sweepline}/scripts/live_kit.sh" status` を実行し、
 > `LIVE=` がディレクトリで `VERSION=` がこの文書の版 (0.5.0) と違えば、`$LIVE/agents/plan-reviewer.md` を Read で読み、この文書ではなくそちらに従う。
 

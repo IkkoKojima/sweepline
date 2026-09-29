@@ -5,7 +5,7 @@ description: この repo の sweep routine を今すぐ 1 回起動する (ロ�
 
 # /sweepline:run [N ...]
 
-<!-- sweepline skill version: 0.5.0 -->
+<!-- sweepline skill version: 0.5.1 -->
 > **live kit** (クラウドセッションだけ): まず `bash "${CLAUDE_PLUGIN_ROOT:-/opt/sweepline/kit/plugins/sweepline}/scripts/live_kit.sh" status` を実行する。
 > `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.0) と違えば**、`$LIVE/skills/run/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
 > (この文書の続きは使わない)。同じ版か `LIVE=none` なら、このまま続ける。

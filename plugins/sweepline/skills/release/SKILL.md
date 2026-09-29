@@ -5,7 +5,7 @@ description: 配信セッション (deploy 環境、オーナー起動)。対象
 
 # /sweepline:release <minor|patch|X.Y.Z[+N]> [--scope type1,type2] [--dry-run]
 
-<!-- sweepline skill version: 0.5.0 -->
+<!-- sweepline skill version: 0.5.1 -->
 > **live kit** (クラウドセッションだけ): まず `bash "${CLAUDE_PLUGIN_ROOT:-/opt/sweepline/kit/plugins/sweepline}/scripts/live_kit.sh" status` を実行する。
 > `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.0) と違えば**、`$LIVE/skills/release/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
 > (この文書の続きは使わない)。同じ版か `LIVE=none` なら、このまま続ける。
