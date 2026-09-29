@@ -5,9 +5,9 @@ description: オーナーの一言から対話で要件を固め、テンプレ�
 
 # /sweepline:req [--backlog] <一言>
 
-<!-- sweepline skill version: 0.5.2 -->
+<!-- sweepline skill version: 0.5.3 -->
 > **live kit** (クラウドセッションだけ): まず `bash "${CLAUDE_PLUGIN_ROOT:-/opt/sweepline/kit/plugins/sweepline}/scripts/live_kit.sh" status` を実行する。
-> `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.2) と違えば**、`$LIVE/skills/req/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
+> `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.3) と違えば**、`$LIVE/skills/req/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
 > (この文書の続きは使わない)。同じ版か `LIVE=none` なら、このまま続ける。
 
 `--backlog` は sweepline dashboard の「Claude Code で要件を詰める」ボタンから渡される。付いていれば **作成だけ** (ラベルを付けない = バックログ) を既定にし、手順 6 の文言は「この「OK」でラベル無しの issue を作ります (着手は dashboard かラベルで)」に変え、手順 7 の「今すぐ回しますか」は尋ねない。
