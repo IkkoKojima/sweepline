@@ -5,10 +5,15 @@ description: routine が呼ぶ無人運転の入口。リリースロック → 
 
 # /sweepline:sweep [--dry-run]
 
+<!-- sweepline skill version: 0.5.0 -->
+> **live kit** (クラウドセッションだけ): まず `bash "${CLAUDE_PLUGIN_ROOT:-/opt/sweepline/kit/plugins/sweepline}/scripts/live_kit.sh" status` を実行する。
+> `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.0) と違えば**、`$LIVE/skills/sweep/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
+> (この文書の続きは使わない)。同じ版か `LIVE=none` なら、このまま続ける。
+
 無人で走る前提 (質問しない)。GitHub 操作は REST (`gh.sh`) と GitHub MCP のみ。
 
 ```bash
-KIT="${CLAUDE_PLUGIN_ROOT:-}"; [ -d "$KIT/scripts" ] || KIT=/opt/sweepline/kit/plugins/sweepline
+KIT=""; for d in /opt/sweepline/live/plugins/sweepline "$HOME/sweepline/live/plugins/sweepline" "${CLAUDE_PLUGIN_ROOT:-}" /opt/sweepline/kit/plugins/sweepline; do [ -d "$d/scripts" ] && { KIT="$d"; break; }; done   # live (toml の kit の版) を優先
 [ -d "$KIT/scripts" ] || KIT="$(ls -d ~/.claude/plugins/marketplaces/*/plugins/sweepline 2>/dev/null | head -1)"   # marketplace clone (marketplace update で最新になる) を優先
 [ -d "$KIT/scripts" ] || KIT="$(dirname "$(dirname "$(find ~/.claude/plugins -path '*sweepline*' -path '*/scripts/sweepline_config.py' 2>/dev/null | head -1)")")"
 PC="python3 $KIT/scripts/sweepline_config.py"; GH="bash $KIT/scripts/gh.sh"
@@ -76,9 +81,10 @@ sweep <ISO 時刻> (session: <URL or id>) kit=$KIT_SHA
 - 対象: #12 #15 / 回収: #9 / 修正依頼の受付: #7 (依頼 2 件) / 指定: (payload があれば)
 - 結果: #9 merged (PR #30, 計画 1 往復, エスカレーション 0), #7 修正 1 merged (PR #31, 依頼 2 件), #12 blocked (理由), #15 未着手 (時間切れ)
 - main: ok (<verify の要約>) / 所要: 1h48m / Fable 代替: なし / 未解決の指摘: PR #30 M2
-- kit: 0.4.1 (最新 0.4.2 あり → ローカルで `/sweepline:setup --update`)
+- kit: 0.5.1 (live / スナップショット 0.5.0 / 最新 0.5.1)
 ```
 
-kit の行は `bash $KIT/scripts/kit_update_check.sh` (`CURRENT= LATEST= UPDATE=yes|no|unknown`) から書く。`UPDATE=no` なら「kit: 0.4.2 (最新)」、
-`unknown` なら「kit: 0.4.1 (最新は確認できず)」。更新はオーナーがローカルで行う (クラウドからは環境を書き換えられない) ので、案内するだけで止まらない。
-`$GH comment "$STATUS" -` で投稿する。最後に `git checkout -q "$START_BRANCH"` で元のブランチに戻す (detach のままにしない)。
+kit の行は `bash $KIT/scripts/live_kit.sh status` (`LIVE= VERSION= SNAPSHOT= REF=`) と `bash $KIT/scripts/kit_update_check.sh`
+(`CURRENT= LATEST= UPDATE=yes|no|unknown`) から書く: live があれば「kit: <live の版> (live / スナップショット <版> / 最新 <版>)」、無ければ
+「kit: <版> (スナップショット / 最新 <版>)」。`UPDATE=yes` なら末尾に「→ `sweepline.toml` の kit を上げる (dashboard の「更新する」か
+`/sweepline:setup --update`)」を足す。案内するだけで止まらない。`$GH comment "$STATUS" -` で投稿する。最後に `git checkout -q "$START_BRANCH"` で元のブランチに戻す (detach のままにしない)。

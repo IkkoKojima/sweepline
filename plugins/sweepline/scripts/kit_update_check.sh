@@ -1,7 +1,7 @@
 #!/bin/bash
 # kit_update_check.sh — プラグイン (kit) に新しい版があるかを見る (sweep の要約と SessionStart の 1 行用)。
 #
-#   kit_update_check.sh            → 1 行: CURRENT=<版> LATEST=<版|unknown> UPDATE=yes|no|unknown
+#   kit_update_check.sh            → 1 行: CURRENT=<版> LATEST=<版|unknown> UPDATE=yes|no|unknown LATEST_SHA=<main の sha|unknown>
 #
 # 今の版はこのスクリプトの隣の .claude-plugin/plugin.json、最新は配布元 (公開 repo) の main の plugin.json を
 # raw.githubusercontent.com から取る (5 秒で諦める。届かなければ LATEST=unknown)。飾りなので常に exit 0。
@@ -27,6 +27,10 @@ if curl -fsSL --max-time 5 -o "$TMP" "https://raw.githubusercontent.com/$KIT_REP
 fi
 rm -f "$TMP" 2>/dev/null
 
+# main の sha (sweepline.toml の kit に書く値)。api.github.com は公開 repo なら認証なしで読める (届かなければ unknown)
+LATEST_SHA="$(curl -fsSL --max-time 5 -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$KIT_REPO/commits/main" 2>/dev/null \
+  | "$PY" -c 'import json,sys; print(json.load(sys.stdin).get("sha", ""))' 2>/dev/null | tr -d '\r')"
+
 UPDATE=unknown
 if [[ -n "$CURRENT" && -n "$LATEST" ]]; then
   # 桁ごとに数で比べる (足りない桁は 0)
@@ -38,5 +42,5 @@ n = max(len(a), len(b)); a += [0] * (n - len(a)); b += [0] * (n - len(b))
 print("yes" if a < b else "no")' "$CURRENT" "$LATEST" 2>/dev/null | tr -d '\r')"
   [[ "$UPDATE" == yes || "$UPDATE" == no ]] || UPDATE=unknown
 fi
-echo "CURRENT=${CURRENT:-unknown} LATEST=${LATEST:-unknown} UPDATE=$UPDATE"
+echo "CURRENT=${CURRENT:-unknown} LATEST=${LATEST:-unknown} UPDATE=$UPDATE LATEST_SHA=${LATEST_SHA:-unknown}"
 exit 0

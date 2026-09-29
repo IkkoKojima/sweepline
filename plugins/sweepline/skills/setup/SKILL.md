@@ -5,11 +5,16 @@ description: 自動実装パイプラインをこのリポジトリに導入・�
 
 # /sweepline:setup [--update | --deploy | --check]
 
+<!-- sweepline skill version: 0.5.0 -->
+> **live kit** (クラウドセッションだけ): まず `bash "${CLAUDE_PLUGIN_ROOT:-/opt/sweepline/kit/plugins/sweepline}/scripts/live_kit.sh" status` を実行する。
+> `LIVE=` がディレクトリで、その `VERSION=` が**この文書の版 (0.5.0) と違えば**、`$LIVE/skills/setup/SKILL.md` を Read で読み、**この文書ではなくそちらに従う**
+> (この文書の続きは使わない)。同じ版か `LIVE=none` なら、このまま続ける。
+
 オーナーが**ローカルの Claude Code** で対象リポジトリを開いて実行する。クラウドセッションでは動かない (環境 API と RemoteTrigger は
 ローカルの OAuth が要る)。質問は最小限で、推奨案を示して確認を取る形にする。**シークレットは受け取らない** (貼り付け先の案内だけ)。
 
 ```bash
-KIT="${CLAUDE_PLUGIN_ROOT:-}"; [ -d "$KIT/scripts" ] || KIT=/opt/sweepline/kit/plugins/sweepline
+KIT=""; for d in /opt/sweepline/live/plugins/sweepline "$HOME/sweepline/live/plugins/sweepline" "${CLAUDE_PLUGIN_ROOT:-}" /opt/sweepline/kit/plugins/sweepline; do [ -d "$d/scripts" ] && { KIT="$d"; break; }; done   # live (toml の kit の版) を優先
 [ -d "$KIT/scripts" ] || KIT="$(ls -d ~/.claude/plugins/marketplaces/*/plugins/sweepline 2>/dev/null | head -1)"   # marketplace clone (marketplace update で最新になる) を優先
 [ -d "$KIT/scripts" ] || KIT="$(dirname "$(dirname "$(find ~/.claude/plugins -path '*sweepline*' -path '*/scripts/sweepline_config.py' 2>/dev/null | head -1)")")"
 PC="python3 $KIT/scripts/sweepline_config.py"; EA="python3 $KIT/scripts/env_api.py"; GH="bash $KIT/scripts/gh.sh"
@@ -113,7 +118,18 @@ $GH status-issue          # 無ければ作る。番号を表示
 
 ## `--update`
 
-手順 2 だけを**この repo の環境 (`env.name`)** に対して行う (kit sha を最新にし init_script を再生成)。他の repo の環境は各 repo で実行する (init_script は repo の設定から作るため)。routine は触らない。`sweepline.toml` の `kit` を更新して commit。
+プラグインの実体はセッション開始時に `sweepline.toml` の `kit` の版を配布元から取って使う (live kit、`scripts/live_kit.sh`) ので、
+**通常の更新は `kit` を書き換えて main に入れるだけ**でよい。環境の init_script (スナップショットのランチャとツールチェーン) を
+作り直すのは、ランチャの約束事や stack のツールチェーン (Flutter の版・apt) が変わったときだけ。
+
+- **クラウドセッション** (`CLAUDE_CODE_REMOTE=true`、環境 API は使えない): `bash $KIT/scripts/kit_update_check.sh` の `LATEST_SHA` (無ければ
+  `curl -fsSL https://api.github.com/repos/IkkoKojima/sweepline/commits/main` の `sha`) を `sweepline.toml` の `kit` に書き、
+  ブランチ `sweepline/kit-<版>` で commit (`chore(sweepline): kit を <版> (<sha 7 桁>) に更新`) → push → PR (MCP `create_pull_request`、
+  本文は `Refs` 無しの 1 行でよい。`verify_checklist.py check` は `--allow-sweepline`) → `merge.wait_for_checks` があれば `pr_checks.sh wait` →
+  squash マージ。以後に始まるセッションから新しい版になる。環境は触らない (触れない)
+- **ローカル**: 手順 2 (init_script の再生成と環境の更新) を**この repo の環境 (`env.name`)** に対して行い、`sweepline.toml` の `kit` も更新して commit。
+  他の repo の環境は各 repo で実行する (init_script は repo の設定から作るため)。routine は触らない
+- `kit` の書き方: commit sha (固定、既定)、タグ (`0.5.0`)、`latest` (配布元の main に追従。更新の操作が要らない代わりに再現性は無い)
 
 ## `--deploy`
 
